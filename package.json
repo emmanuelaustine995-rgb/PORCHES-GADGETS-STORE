@@ -1,7 +1,8 @@
 {
-  "name": "social-hub",
+  "name": "porches-gadgets-store",
   "version": "1.0.0",
   "private": true,
+  "description": "Porches Gadgets Store online shop",
   "scripts": {
     "start": "node server.js"
   },
