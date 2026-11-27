@@ -34,7 +34,8 @@ async function tumaRequest(url,options){const r=await fetch(url,{...options,sign
 async function stkPush(order){
  const auth=await tumaRequest('https://api.tuma.co.ke/auth/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:E.TUMA_BUSINESS_EMAIL,api_key:E.TUMA_API_KEY})});
  const token=auth?.data?.token;if(!token)throw Error('Tuma authentication failed. Check the business email and API key in Render.');
- const callback=E.PUBLIC_URL.replace(/\\/$/,'')+'/api/tuma/callback/'+E.TUMA_CALLBACK_SECRET;
+ const baseUrl=E.PUBLIC_URL.endsWith('/')?E.PUBLIC_URL.slice(0,-1):E.PUBLIC_URL;
+ const callback=baseUrl+'/api/tuma/callback/'+E.TUMA_CALLBACK_SECRET;
  const result=await tumaRequest('https://api.tuma.co.ke/payment/stk-push',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({amount:order.total,phone:order.phone,callback_url:callback,description:'Payment for Porches Gadgets order '+order.id})});
  const data=result?.data;if(!data?.checkout_request_id||!data?.merchant_request_id)throw Error(result.message||'Tuma did not return payment request identifiers.');
  return {checkoutId:String(data.checkout_request_id),merchantRequestId:String(data.merchant_request_id),message:clean(data.customer_message||result.message,180)};
