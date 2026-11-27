@@ -4,6 +4,7 @@ const http=require('http'),fs=require('fs'),path=require('path'),crypto=require(
 const E=process.env,PORT=Number(E.PORT||3000),PUBLIC=path.join(__dirname,'public');
 const DATA=E.DATA_DIR||path.join(__dirname,'data');
 fs.mkdirSync(DATA,{recursive:true});
+const UPLOADS=path.join(DATA,'uploads');fs.mkdirSync(UPLOADS,{recursive:true});
 const seed=[
 {id:'phone-128',name:'Smartphone 6.5-inch 128GB',cat:'Phones',price:13999,was:16500,stock:12,icon:'📱',description:'Everyday smartphone with generous storage.'},
 {id:'feature-dual',name:'Feature Phone Dual SIM',cat:'Phones',price:1499,was:1900,stock:20,icon:'☎️',description:'Simple, reliable dual-SIM feature phone.'},
@@ -21,11 +22,11 @@ function write(n,value){const tmp=file(n)+'.tmp';fs.writeFileSync(tmp,JSON.strin
 if(!fs.existsSync(file('products')))write('products',seed);
 if(!fs.existsSync(file('orders')))write('orders',[]);
 const send=(res,status,data,type='application/json; charset=utf-8')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(type.startsWith('application/json')?JSON.stringify(data):data)};
-function body(req){return new Promise((resolve,reject)=>{let raw='';req.on('data',c=>{raw+=c;if(raw.length>100000){reject(Error('Request too large'));req.destroy()}});req.on('end',()=>{try{resolve(JSON.parse(raw||'{}'))}catch{reject(Error('Invalid JSON'))}});req.on('error',reject)})}
+function body(req,max=100000){return new Promise((resolve,reject)=>{let raw='';req.on('data',c=>{raw+=c;if(raw.length>max){reject(Error('Request too large'));req.destroy()}});req.on('end',()=>{try{resolve(JSON.parse(raw||'{}'))}catch{reject(Error('Invalid JSON'))}});req.on('error',reject)})}
 const clean=(v,n=500)=>String(v??'').trim().slice(0,n);
 const hash=s=>crypto.createHash('sha256').update(String(s)).digest();
 function isAdmin(req){const expected=E.ADMIN_KEY||'';if(expected.length<16)return false;const supplied=String(req.headers['x-admin-key']||'');return crypto.timingSafeEqual(hash(supplied),hash(expected))}
-function adminRequired(req,res){if((E.ADMIN_KEY||'').length<16){send(res,503,{error:'Admin is not configured. Set ADMIN_KEY (at least 16 characters) in Northflank.'});return false}if(!isAdmin(req)){send(res,401,{error:'Incorrect admin key.'});return false}return true}
+function adminRequired(req,res){if((E.ADMIN_KEY||'').length<16){send(res,503,{error:'Admin is not configured. Set ADMIN_KEY (at least 16 characters) in Render Environment.'});return false}if(!isAdmin(req)){send(res,401,{error:'Incorrect admin key.'});return false}return true}
 function normalizePhone(value){let p=String(value||'').replace(/[\s-]/g,'');if(p.startsWith('+'))p=p.slice(1);if(/^0[17]\d{8}$/.test(p))return '254'+p.slice(1);if(/^254[17]\d{8}$/.test(p))return p;return null}
 function validProduct(p){return p&&clean(p.name,100)&&clean(p.cat,50)&&Number.isInteger(Number(p.price))&&Number(p.price)>0&&Number.isInteger(Number(p.stock))&&Number(p.stock)>=0}
 function mpesaReady(){return ['MPESA_KEY','MPESA_SECRET','MPESA_SHORTCODE','MPESA_PASSKEY','PUBLIC_URL','CALLBACK_SECRET'].every(k=>!!E[k])}
@@ -50,6 +51,7 @@ const server=http.createServer(async(req,res)=>{
   if(m==='GET'&&route==='/health')return send(res,200,{status:'ok'});
   if(m==='GET'&&route==='/api/config')return send(res,200,{storeName:'PORCHES GADGETS STORE',mpesaEnabled:mpesaReady()});
   if(m==='GET'&&route==='/api/products')return send(res,200,{products:read('products',seed)});
+  if(m==='GET'&&route.startsWith('/uploads/')){const name=path.basename(route.slice('/uploads/'.length));if(!/^product-[a-f0-9]+\\.png$/.test(name))return send(res,404,{error:'Image not found.'});const target=path.join(UPLOADS,name);if(!fs.existsSync(target))return send(res,404,{error:'Image not found.'});res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});return res.end(fs.readFileSync(target));}
   if(m==='POST'&&route==='/api/orders'){
    const b=await body(req),customer={name:clean(b.name,100),phone:normalizePhone(b.phone),address:clean(b.address,300)};
    if(!customer.name||!customer.phone||!customer.address)return send(res,400,{error:'Enter your name, a valid Kenyan phone number and delivery address.'});
@@ -82,15 +84,25 @@ const server=http.createServer(async(req,res)=>{
    if(!adminRequired(req,res))return;
    if(m==='GET'&&route==='/api/admin/products')return send(res,200,{products:read('products',seed)});
    if(m==='GET'&&route==='/api/admin/orders')return send(res,200,{orders:read('orders',[])});
+   if(m==='POST'&&route==='/api/admin/upload-image'){
+    if(!E.REMOVE_BG_API_KEY)return send(res,503,{error:'Automatic background removal is not configured. Add REMOVE_BG_API_KEY in Render Environment.'});
+    const b=await body(req,8*1024*1024),match=String(b.data||'').match(/^data:(image\\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if(!match)return send(res,400,{error:'Choose a PNG, JPG or WebP product photo.'});
+    const input=Buffer.from(match[2],'base64');if(!input.length||input.length>5*1024*1024)return send(res,413,{error:'Product photo must be 5 MB or smaller.'});
+    const form=new FormData();form.append('image_file',new Blob([input],{type:match[1]}),'product-upload');form.append('size','auto');
+    const response=await fetch('https://api.remove.bg/v1.0/removebg',{method:'POST',headers:{'X-Api-Key':E.REMOVE_BG_API_KEY},body:form,signal:AbortSignal.timeout(60000)});
+    if(!response.ok){const detail=(await response.text()).slice(0,300);console.error('remove.bg error',response.status,detail);return send(res,502,{error:'Background removal failed. Check the remove.bg API key or image limits.'});}
+    const output=Buffer.from(await response.arrayBuffer()),name='product-'+crypto.randomBytes(12).toString('hex')+'.png';fs.writeFileSync(path.join(UPLOADS,name),output,{mode:0o644});return send(res,201,{image:'/uploads/'+name});
+   }
    if(m==='POST'&&route==='/api/admin/products'){
     const b=await body(req);if(!validProduct(b))return send(res,400,{error:'Enter a product name, category, valid whole-number price and stock.'});
-    const ps=read('products',seed),p={id:'item-'+crypto.randomBytes(6).toString('hex'),name:clean(b.name,100),cat:clean(b.cat,50),price:Number(b.price),was:Number(b.was)||0,stock:Number(b.stock),icon:clean(b.icon||'📦',8),description:clean(b.description,300)};ps.unshift(p);write('products',ps);return send(res,201,{product:p});
+    const ps=read('products',seed),p={id:'item-'+crypto.randomBytes(6).toString('hex'),name:clean(b.name,100),cat:clean(b.cat,50),price:Number(b.price),was:Number(b.was)||0,stock:Number(b.stock),icon:clean(b.icon||'📦',8),description:clean(b.description,300),image:clean(b.image,200)};ps.unshift(p);write('products',ps);return send(res,201,{product:p});
    }
    if(route.startsWith('/api/admin/products/')){
     const id=decodeURIComponent(route.slice('/api/admin/products/'.length)),ps=read('products',seed),i=ps.findIndex(p=>p.id===id);
     if(i<0)return send(res,404,{error:'Product not found.'});
     if(m==='DELETE'){ps.splice(i,1);write('products',ps);return send(res,200,{ok:true})}
-    if(m==='PUT'){const b=await body(req);if(!validProduct(b))return send(res,400,{error:'Invalid product details.'});ps[i]={...ps[i],name:clean(b.name,100),cat:clean(b.cat,50),price:Number(b.price),was:Number(b.was)||0,stock:Number(b.stock),icon:clean(b.icon||'📦',8),description:clean(b.description,300)};write('products',ps);return send(res,200,{product:ps[i]})}
+    if(m==='PUT'){const b=await body(req);if(!validProduct(b))return send(res,400,{error:'Invalid product details.'});ps[i]={...ps[i],name:clean(b.name,100),cat:clean(b.cat,50),price:Number(b.price),was:Number(b.was)||0,stock:Number(b.stock),icon:clean(b.icon||'📦',8),description:clean(b.description,300),image:clean(b.image,200)};write('products',ps);return send(res,200,{product:ps[i]})}
    }
    if(route.startsWith('/api/admin/orders/')){
     const id=decodeURIComponent(route.slice('/api/admin/orders/'.length)),orders=read('orders',[]),o=orders.find(x=>x.id===id);
