@@ -1,0 +1,92 @@
+[
+  {
+    "id": "phone-128",
+    "name": "Smartphone 6.5-inch 128GB",
+    "cat": "Phones",
+    "price": 13999,
+    "was": 16500,
+    "stock": 12,
+    "icon": "📱",
+    "description": "Everyday smartphone with generous storage."
+  },
+  {
+    "id": "feature-dual",
+    "name": "Feature Phone Dual SIM",
+    "cat": "Phones",
+    "price": 1499,
+    "was": 1900,
+    "stock": 20,
+    "icon": "☎️",
+    "description": "Simple, reliable dual-SIM feature phone."
+  },
+  {
+    "id": "earbuds",
+    "name": "Wireless Earbuds",
+    "cat": "Audio",
+    "price": 1299,
+    "was": 2000,
+    "stock": 25,
+    "icon": "🎧",
+    "description": "Wireless audio for music and calls."
+  },
+  {
+    "id": "speaker",
+    "name": "Bluetooth Speaker",
+    "cat": "Audio",
+    "price": 2199,
+    "was": 2800,
+    "stock": 15,
+    "icon": "🔊",
+    "description": "Portable Bluetooth speaker."
+  },
+  {
+    "id": "watch",
+    "name": "Smart Watch",
+    "cat": "Wearables",
+    "price": 2499,
+    "was": 3500,
+    "stock": 15,
+    "icon": "⌚",
+    "description": "Smart notifications and activity tracking."
+  },
+  {
+    "id": "powerbank",
+    "name": "Power Bank 20,000mAh",
+    "cat": "Accessories",
+    "price": 1850,
+    "was": 2400,
+    "stock": 20,
+    "icon": "🔋",
+    "description": "Portable power for compatible devices."
+  },
+  {
+    "id": "charger",
+    "name": "Fast Charger USB-C",
+    "cat": "Accessories",
+    "price": 750,
+    "was": 1000,
+    "stock": 30,
+    "icon": "🔌",
+    "description": "Compact USB-C fast charger."
+  },
+  {
+    "id": "laptop",
+    "name": "Laptop 14-inch 8GB/256GB",
+    "cat": "Computers",
+    "price": 32999,
+    "was": 38000,
+    "stock": 5,
+    "icon": "💻",
+    "description": "Everyday laptop for study and office work."
+  },
+  {
+    "id": "mouse",
+    "name": "Wireless Mouse",
+    "cat": "Computers",
+    "price": 650,
+    "was": 900,
+    "stock": 25,
+    "icon": "🖱️",
+    "description": "Compact wireless mouse."
+  }
+]
