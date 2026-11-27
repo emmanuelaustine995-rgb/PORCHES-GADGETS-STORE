@@ -51,7 +51,7 @@ const server=http.createServer(async(req,res)=>{
   if(m==='GET'&&route==='/health')return send(res,200,{status:'ok'});
   if(m==='GET'&&route==='/api/config')return send(res,200,{storeName:'PORCHES GADGETS STORE',mpesaEnabled:mpesaReady()});
   if(m==='GET'&&route==='/api/products')return send(res,200,{products:read('products',seed)});
-  if(m==='GET'&&route.startsWith('/uploads/')){const name=path.basename(route.slice('/uploads/'.length));if(!/^product-[a-f0-9]+\\.png$/.test(name))return send(res,404,{error:'Image not found.'});const target=path.join(UPLOADS,name);if(!fs.existsSync(target))return send(res,404,{error:'Image not found.'});res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});return res.end(fs.readFileSync(target));}
+  if(m==='GET'&&route.startsWith('/uploads/')){const name=path.basename(route.slice('/uploads/'.length));if(!/^product-[a-f0-9]+\.png$/.test(name))return send(res,404,{error:'Image not found.'});const target=path.join(UPLOADS,name);if(!fs.existsSync(target))return send(res,404,{error:'Image not found.'});res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});return res.end(fs.readFileSync(target));}
   if(m==='POST'&&route==='/api/orders'){
    const b=await body(req),customer={name:clean(b.name,100),phone:normalizePhone(b.phone),address:clean(b.address,300)};
    if(!customer.name||!customer.phone||!customer.address)return send(res,400,{error:'Enter your name, a valid Kenyan phone number and delivery address.'});
