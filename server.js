@@ -29,27 +29,23 @@ function isAdmin(req){const expected=E.ADMIN_KEY||'';if(expected.length<16)retur
 function adminRequired(req,res){if((E.ADMIN_KEY||'').length<16){send(res,503,{error:'Admin is not configured. Set ADMIN_KEY (at least 16 characters) in Render Environment.'});return false}if(!isAdmin(req)){send(res,401,{error:'Incorrect admin key.'});return false}return true}
 function normalizePhone(value){let p=String(value||'').replace(/[\s-]/g,'');if(p.startsWith('+'))p=p.slice(1);if(/^0[17]\d{8}$/.test(p))return '254'+p.slice(1);if(/^254[17]\d{8}$/.test(p))return p;return null}
 function validProduct(p){return p&&clean(p.name,100)&&clean(p.cat,50)&&Number.isInteger(Number(p.price))&&Number(p.price)>0&&Number.isInteger(Number(p.stock))&&Number(p.stock)>=0}
-function mpesaReady(){return ['MPESA_KEY','MPESA_SECRET','MPESA_SHORTCODE','MPESA_PASSKEY','PUBLIC_URL','CALLBACK_SECRET'].every(k=>!!E[k])}
-const mpesaBase=E.MPESA_ENV==='production'?'https://api.safaricom.co.ke':'https://sandbox.safaricom.co.ke';
-async function mpesaRequest(url,options){const r=await fetch(url,{...options,signal:AbortSignal.timeout(20000)});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.errorMessage||d.error_description||'Safaricom request failed');return d}
+function tumaReady(){return ['TUMA_API_KEY','TUMA_BUSINESS_EMAIL','PUBLIC_URL','TUMA_CALLBACK_SECRET'].every(k=>!!E[k])}
+async function tumaRequest(url,options){const r=await fetch(url,{...options,signal:AbortSignal.timeout(25000)});const d=await r.json().catch(()=>({}));if(!r.ok||d.success===false)throw Error(d.message||'Tuma payment request failed (HTTP '+r.status+').');return d}
 async function stkPush(order){
- const auth=Buffer.from(E.MPESA_KEY+':'+E.MPESA_SECRET).toString('base64');
- const token=await mpesaRequest(mpesaBase+'/oauth/v1/generate?grant_type=client_credentials',{headers:{Authorization:'Basic '+auth}});
- if(!token.access_token)throw Error('Could not authenticate with M-Pesa.');
- const timestamp=new Intl.DateTimeFormat('en-GB',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date()).replace(/\D/g,'');
- const shortcode=String(E.MPESA_SHORTCODE),password=Buffer.from(shortcode+E.MPESA_PASSKEY+timestamp).toString('base64');
- const type=E.MPESA_TRANSACTION_TYPE==='CustomerBuyGoodsOnline'?'CustomerBuyGoodsOnline':'CustomerPayBillOnline';
- const result=await mpesaRequest(mpesaBase+'/mpesa/stkpush/v1/processrequest',{method:'POST',headers:{Authorization:'Bearer '+token.access_token,'Content-Type':'application/json'},body:JSON.stringify({BusinessShortCode:shortcode,Password:password,Timestamp:timestamp,TransactionType:type,Amount:order.total,PartyA:order.phone,PartyB:E.MPESA_PARTY_B||shortcode,PhoneNumber:order.phone,CallBackURL:E.PUBLIC_URL.replace(/\/$/,'')+'/api/mpesa/callback/'+E.CALLBACK_SECRET,AccountReference:order.id.slice(0,12),TransactionDesc:'Porches Gadgets'})});
- if(String(result.ResponseCode)!=='0'||!result.CheckoutRequestID)throw Error(result.errorMessage||result.ResponseDescription||'M-Pesa payment request was not accepted.');
- return result.CheckoutRequestID;
+ const auth=await tumaRequest('https://api.tuma.co.ke/auth/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:E.TUMA_BUSINESS_EMAIL,api_key:E.TUMA_API_KEY})});
+ const token=auth?.data?.token;if(!token)throw Error('Tuma authentication failed. Check the business email and API key in Render.');
+ const callback=E.PUBLIC_URL.replace(/\\/$/,'')+'/api/tuma/callback/'+E.TUMA_CALLBACK_SECRET;
+ const result=await tumaRequest('https://api.tuma.co.ke/payment/stk-push',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({amount:order.total,phone:order.phone,callback_url:callback,description:'Payment for Porches Gadgets order '+order.id})});
+ const data=result?.data;if(!data?.checkout_request_id||!data?.merchant_request_id)throw Error(result.message||'Tuma did not return payment request identifiers.');
+ return {checkoutId:String(data.checkout_request_id),merchantRequestId:String(data.merchant_request_id),message:clean(data.customer_message||result.message,180)};
 }
 function restoreStock(order){if(order.stockRestored)return;const ps=read('products',seed);for(const line of order.items){const p=ps.find(x=>x.id===line.id);if(p)p.stock+=line.qty}write('products',ps);order.stockRestored=true}
-function publicOrder(o){return {id:o.id,status:o.status,total:o.total,payment:o.pay==='mpesa'?(o.receipt?'Paid':'M-Pesa'): 'Pay on delivery',created:o.created,items:o.items.map(i=>({name:i.name,qty:i.qty,price:i.price}))}}
+function publicOrder(o){return {id:o.id,status:o.status,total:o.total,payment:o.pay==='mpesa'?(o.receipt?'Paid':'Tuma M-Pesa'): 'Pay on delivery',created:o.created,items:o.items.map(i=>({name:i.name,qty:i.qty,price:i.price}))}}
 const server=http.createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,'http://localhost'),route=url.pathname,m=req.method;
   if(m==='GET'&&route==='/health')return send(res,200,{status:'ok'});
-  if(m==='GET'&&route==='/api/config')return send(res,200,{storeName:'PORCHES GADGETS STORE',mpesaEnabled:mpesaReady()});
+  if(m==='GET'&&route==='/api/config')return send(res,200,{storeName:'PORCHES GADGETS STORE',mpesaEnabled:tumaReady()});
   if(m==='GET'&&route==='/api/products')return send(res,200,{products:read('products',seed)});
   if(m==='GET'&&route.startsWith('/uploads/')){const name=path.basename(route.slice('/uploads/'.length));if(!/^product-[a-f0-9]+\.png$/.test(name))return send(res,404,{error:'Image not found.'});const target=path.join(UPLOADS,name);if(!fs.existsSync(target))return send(res,404,{error:'Image not found.'});res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});return res.end(fs.readFileSync(target));}
   if(m==='POST'&&route==='/api/orders'){
@@ -59,22 +55,22 @@ const server=http.createServer(async(req,res)=>{
    const ps=read('products',seed),items=[];
    for(const line of b.items){const p=ps.find(x=>x.id===String(line.id)),qty=Number(line.qty);if(!p||!Number.isInteger(qty)||qty<1||qty>20)return send(res,400,{error:'An item or quantity in your cart is invalid.'});if(p.stock<qty)return send(res,409,{error:p.name+' has only '+p.stock+' left in stock.'});if(items.some(x=>x.id===p.id))return send(res,400,{error:'Duplicate cart item.'});items.push({id:p.id,name:p.name,price:p.price,qty})}
    const total=items.reduce((sum,x)=>sum+x.price*x.qty,0);if(!Number.isSafeInteger(total)||total<1)return send(res,400,{error:'Invalid order total.'});
-   const pay=b.pay==='mpesa'?'mpesa':'cod';if(pay==='mpesa'&&!mpesaReady())return send(res,503,{error:'M-Pesa is not configured yet. Choose Pay on delivery or contact the store.'});
+   const pay=b.pay==='mpesa'?'mpesa':'cod';if(pay==='mpesa'&&!tumaReady())return send(res,503,{error:'Tuma M-Pesa is not configured. Check TUMA_API_KEY, TUMA_BUSINESS_EMAIL, PUBLIC_URL and TUMA_CALLBACK_SECRET in Render.'});
    const orders=read('orders',[]),order={id:'PG'+crypto.randomBytes(5).toString('hex').toUpperCase(),name:customer.name,phone:customer.phone,address:customer.address,items,total,pay,status:pay==='mpesa'?'Starting M-Pesa payment':'Placed — pay on delivery',created:new Date().toISOString(),stockRestored:false};
    for(const line of items)ps.find(x=>x.id===line.id).stock-=line.qty;write('products',ps);orders.unshift(order);write('orders',orders);
-   if(pay==='mpesa'){try{order.checkoutId=await stkPush(order);order.status='Awaiting M-Pesa payment — enter your PIN on your phone';write('orders',orders)}catch(e){restoreStock(order);order.status='Payment request failed';order.paymentError=clean(e.message,180);write('orders',orders);return send(res,502,{error:'M-Pesa could not start: '+clean(e.message,160)+' You have not been charged. Please retry or choose pay on delivery.'})}}
+   if(pay==='mpesa'){try{const payment=await stkPush(order);order.checkoutId=payment.checkoutId;order.merchantRequestId=payment.merchantRequestId;order.status='Awaiting M-Pesa payment — check your phone and enter your PIN';order.paymentMessage=payment.message;write('orders',orders)}catch(e){restoreStock(order);order.status='Payment request failed';order.paymentError=clean(e.message,180);write('orders',orders);return send(res,502,{error:'Tuma could not start the M-Pesa prompt: '+clean(e.message,160)+' You have not been charged. Please retry or choose pay on delivery.'})}}
    return send(res,201,{id:order.id,status:order.status,total:order.total});
   }
-  if(m==='POST'&&route.startsWith('/api/mpesa/callback/')){
-   if(!E.CALLBACK_SECRET||route!=='/api/mpesa/callback/'+E.CALLBACK_SECRET)return send(res,404,{error:'Not found'});
-   const payload=await body(req),cb=payload?.Body?.stkCallback,orders=read('orders',[]),o=cb&&orders.find(x=>x.checkoutId===cb.CheckoutRequestID);
-   if(o&&o.status.startsWith('Awaiting M-Pesa')){
-    const meta=cb.CallbackMetadata?.Item||[],get=n=>meta.find(x=>x.Name===n)?.Value;
-    if(Number(cb.ResultCode)===0&&Number(get('Amount'))===o.total&&String(get('PhoneNumber'))===o.phone){o.status='Paid';o.receipt=clean(get('MpesaReceiptNumber'),30);o.paidAt=new Date().toISOString()}
-    else{o.status='Payment failed';restoreStock(o)}
+  if(m==='POST'&&route.startsWith('/api/tuma/callback/')){
+   if(!E.TUMA_CALLBACK_SECRET||route!=='/api/tuma/callback/'+E.TUMA_CALLBACK_SECRET)return send(res,404,{error:'Not found'});
+   const cb=await body(req),orders=read('orders',[]),o=orders.find(x=>x.checkoutId===String(cb.checkout_request_id||''));
+   if(o&&o.status.startsWith('Awaiting M-Pesa')&&String(cb.merchant_request_id||'')===o.merchantRequestId){
+    const success=String(cb.status||'').toLowerCase()==='completed'&&Number(cb.result_code)===0&&Number(cb.amount)===o.total&&!!clean(cb.mpesa_receipt_number,30);
+    if(success){o.status='Paid';o.receipt=clean(cb.mpesa_receipt_number,30);o.paidAt=new Date().toISOString()}
+    else if(String(cb.status||'').toLowerCase()==='failed'||Number(cb.result_code)!==0){o.status='Payment failed';restoreStock(o)}
     write('orders',orders);
    }
-   return send(res,200,{ResultCode:0,ResultDesc:'Accepted'});
+   return send(res,200,{success:true,message:'Callback received'});
   }
   if(m==='GET'&&route.startsWith('/api/orders/')){
    const id=clean(decodeURIComponent(route.slice('/api/orders/'.length)),40),o=read('orders',[]).find(x=>x.id===id);
@@ -108,7 +104,7 @@ const server=http.createServer(async(req,res)=>{
    if(route.startsWith('/api/admin/orders/')){
     const id=decodeURIComponent(route.slice('/api/admin/orders/'.length)),orders=read('orders',[]),o=orders.find(x=>x.id===id);
     if(!o)return send(res,404,{error:'Order not found.'});
-    if(m==='PATCH'){const b=await body(req),allowed=['Confirmed','Processing','Shipped','Delivered','Cancelled'];if(!allowed.includes(b.status))return send(res,400,{error:'Invalid order status.'});if(o.status==='Starting M-Pesa payment'||o.status.startsWith('Awaiting M-Pesa'))return send(res,409,{error:'This order is waiting for Safaricom payment confirmation. Do not change its status yet.'});if(o.status==='Payment failed'||o.status==='Cancelled')return send(res,409,{error:'This order is in a final state and cannot be changed.'});if(o.status==='Paid'&&b.status==='Cancelled')return send(res,409,{error:'A paid order cannot be cancelled here. Handle the refund separately first.'});if(b.status==='Cancelled'&&!o.stockRestored)restoreStock(o);o.status=b.status;write('orders',orders);return send(res,200,{order:o})}
+    if(m==='PATCH'){const b=await body(req),allowed=['Confirmed','Processing','Shipped','Delivered','Cancelled'];if(!allowed.includes(b.status))return send(res,400,{error:'Invalid order status.'});if(o.status==='Starting M-Pesa payment'||o.status.startsWith('Awaiting M-Pesa'))return send(res,409,{error:'This order is waiting for Tuma payment confirmation. Do not change its status yet.'});if(o.status==='Payment failed'||o.status==='Cancelled')return send(res,409,{error:'This order is in a final state and cannot be changed.'});if(o.status==='Paid'&&b.status==='Cancelled')return send(res,409,{error:'A paid order cannot be cancelled here. Handle the refund separately first.'});if(b.status==='Cancelled'&&!o.stockRestored)restoreStock(o);o.status=b.status;write('orders',orders);return send(res,200,{order:o})}
    }
   }
   if(m==='GET'&&(route==='/'||route==='/index.html')){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'});return res.end(fs.readFileSync(path.join(PUBLIC,'index.html')))}
