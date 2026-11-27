@@ -85,14 +85,15 @@ const server=http.createServer(async(req,res)=>{
    if(m==='GET'&&route==='/api/admin/products')return send(res,200,{products:read('products',seed)});
    if(m==='GET'&&route==='/api/admin/orders')return send(res,200,{orders:read('orders',[])});
    if(m==='POST'&&route==='/api/admin/upload-image'){
-    if(!E.REMOVE_BG_API_KEY)return send(res,503,{error:'Automatic background removal is not configured. Add REMOVE_BG_API_KEY in Render Environment.'});
+    if(!E.REMOVE_BG_API_KEY||E.REMOVE_BG_API_KEY.trim().length<10)return send(res,503,{error:'Background removal is not configured. In Render, open this service → Environment and add REMOVE_BG_API_KEY with your remove.bg API key, then redeploy.'});
     const b=await body(req,8*1024*1024),match=String(b.data||'').match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
     if(!match)return send(res,400,{error:'Choose a PNG, JPG or WebP product photo.'});
     const input=Buffer.from(match[2],'base64');if(!input.length||input.length>5*1024*1024)return send(res,413,{error:'Product photo must be 5 MB or smaller.'});
     const form=new FormData();form.append('image_file',new Blob([input],{type:match[1]}),'product-upload');form.append('size','auto');
-    const response=await fetch('https://api.remove.bg/v1.0/removebg',{method:'POST',headers:{'X-Api-Key':E.REMOVE_BG_API_KEY},body:form,signal:AbortSignal.timeout(60000)});
-    if(!response.ok){const detail=(await response.text()).slice(0,300);console.error('remove.bg error',response.status,detail);return send(res,502,{error:'Background removal failed. Check the remove.bg API key or image limits.'});}
-    const output=Buffer.from(await response.arrayBuffer()),name='product-'+crypto.randomBytes(12).toString('hex')+'.png';fs.writeFileSync(path.join(UPLOADS,name),output,{mode:0o644});return send(res,201,{image:'/uploads/'+name});
+    let response;try{response=await fetch('https://api.remove.bg/v1.0/removebg',{method:'POST',headers:{'X-Api-Key':E.REMOVE_BG_API_KEY.trim()},body:form,signal:AbortSignal.timeout(60000)})}catch(e){console.error('remove.bg connection error:',e.message);return send(res,502,{error:'Could not reach remove.bg. Check the Render service network and try again.'})}
+    if(!response.ok){const detail=(await response.text()).slice(0,500);console.error('remove.bg error',response.status,detail);let reason='remove.bg rejected the request.';try{const parsed=JSON.parse(detail);reason=parsed.errors?.map(x=>x.title||x.detail).filter(Boolean).join(' ')||parsed.error||reason}catch{};if(response.status===401||response.status===403)reason='The remove.bg API key is invalid or inactive.';else if(response.status===402)reason='The remove.bg account has no remaining credits or requires a paid plan.';else if(response.status===429)reason='The remove.bg rate limit was reached. Wait and try again.';return send(res,502,{error:'Background removal failed: '+reason+' (remove.bg HTTP '+response.status+').'})}
+    const output=Buffer.from(await response.arrayBuffer());if(!output.length)return send(res,502,{error:'remove.bg returned an empty image. Try another photo.'});
+    const name='product-'+crypto.randomBytes(12).toString('hex')+'.png';fs.writeFileSync(path.join(UPLOADS,name),output,{mode:0o644});return send(res,201,{image:'/uploads/'+name});
    }
    if(m==='POST'&&route==='/api/admin/products'){
     const b=await body(req);if(!validProduct(b))return send(res,400,{error:'Enter a product name, category, valid whole-number price and stock.'});
