@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connect with us</title>
+<style>
+:root{--bg:#0d0b1a;--card:#1a1730;--text:#f4f1ff;--muted:#b0a9cc;--a:#ff5c8a;--b:#ffb84c;--c:#4ce0c3}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+main{max-width:720px;margin:auto;padding:0 16px}
+section{padding:48px 0}
+.hero{text-align:center;padding-top:40px}
+.orbit{width:220px;height:220px;margin:0 auto 24px;position:relative;border:1px dashed #5a5480;border-radius:50%;animation:spin 24s linear infinite}
+.orbit i{position:absolute;width:30px;height:30px;border-radius:50%;background:var(--a)}
+.orbit i:nth-child(1){top:-15px;left:95px}.orbit i:nth-child(2){top:95px;right:-15px;background:var(--b)}
+.orbit i:nth-child(3){bottom:-15px;left:95px;background:var(--c)}.orbit i:nth-child(4){top:95px;left:-15px;background:#8b7bff}
+.orbit b{position:absolute;inset:60px;border-radius:50%;background:linear-gradient(135deg,var(--a),var(--b))}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.orbit{animation:none}html{scroll-behavior:auto}}
+h1{font-size:clamp(2.2rem,9vw,4rem);line-height:1.05;background:linear-gradient(90deg,var(--a),var(--b),var(--c));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{margin-bottom:16px}
+p{color:var(--muted);margin-top:12px}
+.row{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:24px}
+.btn{border:0;border-radius:999px;padding:13px 24px;font:600 1rem system-ui;cursor:pointer;text-decoration:none;background:var(--a);color:#14101f}
+.wa{background:#25d366}.mail{background:var(--b)}
+.btn:disabled{opacity:.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.tile{background:var(--card);border-radius:18px;padding:22px;text-align:center;color:var(--text);text-decoration:none;font-weight:700;transition:.2s}
+.tile:hover{transform:translateY(-4px);background:#2a2550}
+.card{background:var(--card);border-radius:22px;padding:20px}
+input,textarea{width:100%;margin-bottom:12px;padding:13px;border-radius:12px;border:1px solid #403a66;background:var(--bg);color:var(--text);font:inherit}
+label.check{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+label.check input{width:auto;margin:0}
+footer{text-align:center;padding:24px;color:var(--muted)}
+footer a{color:var(--muted)}
+#status{white-space:pre-line}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="orbit" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+    <h1 id="headline"></h1><p id="intro"></p>
+    <div class="row"><a class="btn wa" id="wa" target="_blank" rel="noopener">WhatsApp us</a><a class="btn mail" id="mail">Email us</a></div>
+  </section>
+  <section><h2>Find us everywhere</h2><div class="grid" id="socials"></div></section>
+  <section><h2>Say hello</h2><form class="card" id="contact">
+    <input id="cname" placeholder="Your name" required><textarea id="cmsg" rows="4" placeholder="Your message" required></textarea>
+    <div class="row"><button class="btn wa" value="wa">Send on WhatsApp</button><button class="btn mail" value="mail">Send by email</button></div>
+  </form></section>
+  <section id="studio" hidden><h2>Post once, share everywhere</h2><div class="card">
+    <form id="login"><input type="password" id="pw" placeholder="Owner password" required><button class="btn">Unlock</button></form>
+    <form id="composer" hidden><textarea id="content" rows="5" placeholder="What's new?"></textarea><p id="count">0 characters</p>
+      <p>Photo or video (optional, but TikTok and Instagram need one)</p><input type="file" id="file" accept="image/*,video/*"><div id="accounts"></div>
+      <label class="check"><input type="checkbox" id="tt"> TikTok: I previewed this and agree to publish it publicly under TikTok's rules</label><button class="btn" id="publish">Publish now</button>
+    </form><p id="status" role="status"></p>
+  </div></section>
+</main>
+<footer><span id="brand"></span> · <a href="#studio" id="owner">Owner login</a></footer>
+<script src="/config.js"></script>
+<script>
+const $ = id => document.getElementById(id), S = window.SITE;
+document.title = S.name; $('headline').textContent = S.headline; $('intro').textContent = S.intro;
+$('brand').textContent = '© ' + new Date().getFullYear() + ' ' + S.name;
+const waLink = t => `https://wa.me/${S.whatsapp}?text=${encodeURIComponent(t)}`;
+const mailLink = (s,b) => `mailto:${S.email}?subject=${encodeURIComponent(s)}&body=${encodeURIComponent(b)}`;
+$('wa').href = waLink(`Hello ${S.name}!`); $('mail').href = mailLink('Hello','');
+for (const [name,link] of Object.entries(S.socials)) { const a=Object.assign(document.createElement('a'),{className:'tile',href:link,textContent:name,target:'_blank',rel:'noopener'}); $('socials').append(a); }
+$('contact').onsubmit = e => { e.preventDefault(); const t=`Hi, I'm ${$('cname').value}.\n${$('cmsg').value}`; if(e.submitter.value==='wa') window.open(waLink(t),'_blank'); else location.href=mailLink('Message from '+$('cname').value,t); };
+let password=''; const showStudio=()=>{$('studio').hidden=false;$('studio').scrollIntoView();};
+$('owner').onclick=e=>{e.preventDefault();showStudio();}; if(location.hash==='#studio') showStudio();
+async function api(url,body){const r=await fetch(url,{method:body?'POST':'GET',headers:{'x-password':password,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;}
+$('login').onsubmit=async e=>{e.preventDefault();password=$('pw').value;$('status').textContent='Checking…';try{const {accounts}=await api('/api/accounts');$('accounts').replaceChildren(...accounts.map(a=>{const l=document.createElement('label');l.className='check';const b=Object.assign(document.createElement('input'),{type:'checkbox',value:a.id,checked:a.platform!=='tiktok'});b.dataset.platform=a.platform;l.append(b,` ${a.platform} ${a.name}`);return l;}));$('login').hidden=true;$('composer').hidden=false;$('status').textContent=accounts.length?'':'No accounts connected yet. Connect them in your Zernio dashboard.';}catch(err){$('status').textContent=err.message;}};
+$('content').oninput=()=>{const n=$('content').value.length;$('count').textContent=n+' characters'+(n>280?' (too long for a standard X account)':'');};
+$('composer').onsubmit=async e=>{e.preventDefault();const platforms=[...$('accounts').querySelectorAll('input:checked')].map(b=>({platform:b.dataset.platform,accountId:b.value}));if(!platforms.length)return $('status').textContent='Pick at least one account.';if(!confirm(`Publish to ${platforms.length} account(s) now?`))return;$('publish').disabled=true;try{let media;const file=$('file').files[0];if(file){$('status').textContent='Uploading…';const {uploadUrl,publicUrl}=await api('/api/upload',{filename:file.name,contentType:file.type});const up=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Type':file.type},body:file});if(!up.ok)throw new Error('Upload failed.');media={url:publicUrl,type:file.type==='image/gif'?'gif':file.type.startsWith('video')?'video':'image'};}$('status').textContent='Publishing…';const result=await api('/api/post',{content:$('content').value.trim(),platforms,media,tiktokConsent:$('tt').checked});const lines=(result.post?.platforms||[]).map(p=>`${p.platform}: ${p.status}${p.errorMessage?' - '+p.errorMessage:''}`);$('status').textContent=[result.message||'Sent.',...lines,'Check your accounts to confirm.'].join('\n');}catch(err){$('status').textContent=err.message;}$('publish').disabled=false;};
+</script>
+</body>
+</html>
