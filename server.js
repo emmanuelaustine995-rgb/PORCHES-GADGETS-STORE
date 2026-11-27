@@ -86,7 +86,7 @@ const server=http.createServer(async(req,res)=>{
    if(m==='GET'&&route==='/api/admin/orders')return send(res,200,{orders:read('orders',[])});
    if(m==='POST'&&route==='/api/admin/upload-image'){
     if(!E.REMOVE_BG_API_KEY)return send(res,503,{error:'Automatic background removal is not configured. Add REMOVE_BG_API_KEY in Render Environment.'});
-    const b=await body(req,8*1024*1024),match=String(b.data||'').match(/^data:(image\\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+    const b=await body(req,8*1024*1024),match=String(b.data||'').match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
     if(!match)return send(res,400,{error:'Choose a PNG, JPG or WebP product photo.'});
     const input=Buffer.from(match[2],'base64');if(!input.length||input.length>5*1024*1024)return send(res,413,{error:'Product photo must be 5 MB or smaller.'});
     const form=new FormData();form.append('image_file',new Blob([input],{type:match[1]}),'product-upload');form.append('size','auto');
