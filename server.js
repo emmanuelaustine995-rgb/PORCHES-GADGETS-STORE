@@ -30,13 +30,13 @@ function adminRequired(req,res){if((E.ADMIN_KEY||'').length<16){send(res,503,{er
 function normalizePhone(value){let p=String(value||'').replace(/[\s-]/g,'');if(p.startsWith('+'))p=p.slice(1);if(/^0[17]\d{8}$/.test(p))return '254'+p.slice(1);if(/^254[17]\d{8}$/.test(p))return p;return null}
 function validProduct(p){return p&&clean(p.name,100)&&clean(p.cat,50)&&Number.isInteger(Number(p.price))&&Number(p.price)>0&&Number.isInteger(Number(p.stock))&&Number(p.stock)>=0}
 function tumaReady(){return ['TUMA_API_KEY','TUMA_BUSINESS_EMAIL','PUBLIC_URL','TUMA_CALLBACK_SECRET'].every(k=>!!E[k])}
-async function tumaRequest(url,options){const r=await fetch(url,{...options,signal:AbortSignal.timeout(25000)});const d=await r.json().catch(()=>({}));if(!r.ok||d.success===false)throw Error(d.message||'Tuma payment request failed (HTTP '+r.status+').');return d}
+async function tumaRequest(url,options,stage){let r,d;try{r=await fetch(url,{...options,signal:AbortSignal.timeout(25000)});d=await r.json().catch(()=>({}));}catch(e){console.error('[TUMA] '+stage+' network/timeout failure:',clean(e.message,160));throw Error('Could not connect to Tuma during '+stage+'.');}if(!r.ok||d.success===false){const raw=d.message||d.error||'Tuma rejected the request';const msg=typeof raw==='string'?raw:JSON.stringify(raw);console.error('[TUMA] '+stage+' rejected',{httpStatus:r.status,providerMessage:clean(msg,240)});throw Error(clean(msg,160)+' (Tuma HTTP '+r.status+', '+stage+').');}console.log('[TUMA] '+stage+' accepted',{httpStatus:r.status});return d}
 async function stkPush(order){
- const auth=await tumaRequest('https://api.tuma.co.ke/auth/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:E.TUMA_BUSINESS_EMAIL,api_key:E.TUMA_API_KEY})});
+ const auth=await tumaRequest('https://api.tuma.co.ke/auth/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:E.TUMA_BUSINESS_EMAIL,api_key:E.TUMA_API_KEY})},'authentication');
  const token=auth?.data?.token;if(!token)throw Error('Tuma authentication failed. Check the business email and API key in Render.');
  const baseUrl=E.PUBLIC_URL.endsWith('/')?E.PUBLIC_URL.slice(0,-1):E.PUBLIC_URL;
  const callback=baseUrl+'/api/tuma/callback/'+E.TUMA_CALLBACK_SECRET;
- const result=await tumaRequest('https://api.tuma.co.ke/payment/stk-push',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({amount:order.total,phone:order.phone,callback_url:callback,description:'Payment for Porches Gadgets order '+order.id})});
+ const result=await tumaRequest('https://api.tuma.co.ke/payment/stk-push',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({amount:order.total,phone:order.phone,callback_url:callback,description:'Payment for Porches Gadgets order '+order.id})},'STK push');
  const data=result?.data;if(!data?.checkout_request_id||!data?.merchant_request_id)throw Error(result.message||'Tuma did not return payment request identifiers.');
  return {checkoutId:String(data.checkout_request_id),merchantRequestId:String(data.merchant_request_id),message:clean(data.customer_message||result.message,180)};
 }
